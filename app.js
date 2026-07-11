@@ -56,9 +56,14 @@ async function loadWeather(nextCity){
   card.classList.add("loading");
   city = nextCity;
 
+  const wttrUrl = `https://wttr.in/${encodeURIComponent(city)}?format=j1&_=${Date.now()}`;
+  const v2Url = `https://v2.wttr.in/${encodeURIComponent(city)}?format=j1&_=${Date.now()}`;
+
   const paths = [
-    `https://wttr.in/${encodeURIComponent(city)}?format=j1&_=${Date.now()}`,
-    `https://v2.wttr.in/${encodeURIComponent(city)}?format=j1&_=${Date.now()}`
+    wttrUrl,
+    v2Url,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(wttrUrl)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(v2Url)}`
   ];
 
   try {
@@ -71,7 +76,6 @@ async function loadWeather(nextCity){
 
         const res = await fetch(url, {
           cache: "no-store",
-          mode: "cors",
           signal: controller.signal
         });
 
@@ -159,7 +163,7 @@ $("cBtn").onclick = () => { unit = "C"; render(); };
 loadWeather(city).catch(err => {
   $("place").textContent = "Weather unavailable";
   $("temp").textContent = "--";
-  $("desc").textContent = "Live weather failed to load. Try another city or refresh.";
+  $("desc").textContent = "Live weather failed to load. wttr.in may be blocked by browser/CORS/network. Try another city or refresh.";
   console.error(err);
 });
 
