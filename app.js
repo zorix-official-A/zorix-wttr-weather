@@ -10,7 +10,8 @@ const icons = {
 
 let unit = "C";
 let data = null;
-let city = "Denver";
+const params = new URLSearchParams(location.search);
+let city = params.get("q") || "Denver";
 
 const $ = id => document.getElementById(id);
 
@@ -182,5 +183,6 @@ function showError(err){
   console.error(err);
 }
 
+if ($("cityInput")) $("cityInput").value = city;
 loadWeather(city).catch(showError);
 setInterval(() => loadWeather(city).catch(console.error), 5 * 60 * 1000);
