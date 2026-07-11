@@ -1,4 +1,4 @@
-const ICONS = {
+const icons = {
   sunny: "./assets/icons/sun.svg",
   partly: "./assets/icons/cloud-sun.svg",
   cloudy: "./assets/icons/cloud.svg",
@@ -8,159 +8,122 @@ const ICONS = {
   fog: "./assets/icons/fog.svg"
 };
 
-const state = {
-  unit: "F",
-  location: "Denver",
-  payload: null
-};
+let unit = "F";
+let data = null;
+let city = "Denver";
 
-const el = {
-  city: document.querySelector("#city"),
-  temp: document.querySelector("#temp"),
-  summary: document.querySelector("#summary"),
-  mainIcon: document.querySelector("#mainIcon"),
-  forecast: document.querySelector("#forecastStrip"),
-  chartLine: document.querySelector("#chartLine"),
-  chartDots: document.querySelector("#chartDots"),
-  chartLabels: document.querySelector("#chartLabels"),
-  form: document.querySelector("#searchForm"),
-  input: document.querySelector("#locationInput"),
-  unitF: document.querySelector("#unitF"),
-  unitC: document.querySelector("#unitC")
-};
+const $ = id => document.getElementById(id);
 
-function codeToIcon(code) {
+function iconFor(code){
   const n = Number(code);
-  if ([113].includes(n)) return ICONS.sunny;
-  if ([116, 119].includes(n)) return ICONS.partly;
-  if ([122].includes(n)) return ICONS.cloudy;
-  if ([143, 248, 260].includes(n)) return ICONS.fog;
-  if ([176, 263, 266, 281, 284, 293, 296, 299, 302, 305, 308, 311, 314, 353, 356, 359].includes(n)) return ICONS.rain;
-  if ([179, 182, 185, 227, 230, 317, 320, 323, 326, 329, 332, 335, 338, 350, 362, 365, 368, 371, 374, 377].includes(n)) return ICONS.snow;
-  if ([200, 386, 389, 392, 395].includes(n)) return ICONS.storm;
-  return ICONS.partly;
+  if(n === 113) return icons.sunny;
+  if([116,119].includes(n)) return icons.partly;
+  if(n === 122) return icons.cloudy;
+  if([143,248,260].includes(n)) return icons.fog;
+  if([176,263,266,281,284,293,296,299,302,305,308,311,314,353,356,359].includes(n)) return icons.rain;
+  if([179,182,185,227,230,317,320,323,326,329,332,335,338,350,362,365,368,371,374,377].includes(n)) return icons.snow;
+  if([200,386,389,392,395].includes(n)) return icons.storm;
+  return icons.partly;
 }
 
-function dayName(dateText) {
-  return new Intl.DateTimeFormat("en", { weekday: "short" }).format(new Date(dateText + "T12:00:00"));
+function textOf(x){
+  return x?.weatherDesc?.[0]?.value || "Live weather";
 }
 
-function tempValue(item, unit = state.unit) {
-  return Number(unit === "F" ? item.tempF || item.avgtempF || item.maxtempF : item.tempC || item.avgtempC || item.maxtempC);
+function tempOf(x){
+  return Number(unit === "F" ? x.tempF || x.avgtempF || x.maxtempF : x.tempC || x.avgtempC || x.maxtempC);
 }
 
-function fmtTemp(value) {
-  return `${Math.round(Number(value))}°`;
+function fmt(x){
+  return `${Math.round(Number(x))}°`;
 }
 
-function conditionText(item) {
-  return item?.weatherDesc?.[0]?.value || "Live weather";
+function dayName(date){
+  return new Intl.DateTimeFormat("en",{weekday:"short"}).format(new Date(date+"T12:00:00"));
 }
 
-async function fetchWeather(location) {
-  document.body.classList.add("loading");
-  const url = `https://wttr.in/${encodeURIComponent(location)}?format=j1`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error("Weather service error");
-  state.payload = await res.json();
-  state.location = location;
+function hourLabel(raw){
+  const s = String(raw).padStart(4,"0");
+  const h = Number(s.slice(0,-2) || "0");
+  if(h === 0) return "12a";
+  if(h < 12) return `${h}a`;
+  if(h === 12) return "12p";
+  return `${h - 12}p`;
+}
+
+async function loadWeather(nextCity){
+  document.querySelector(".weather-card").classList.add("loading");
+  city = nextCity;
+  const url = `https://wttr.in/${encodeURIComponent(city)}?format=j1&_=${Date.now()}`;
+  const res = await fetch(url,{cache:"no-store"});
+  if(!res.ok) throw new Error("wttr.in failed");
+  data = await res.json();
   render();
-  document.body.classList.remove("loading");
+  document.querySelector(".weather-card").classList.remove("loading");
 }
 
-function render() {
-  const current = state.payload.current_condition[0];
-  const area = state.payload.nearest_area?.[0];
-  const weather = state.payload.weather || [];
-  const city = area?.areaName?.[0]?.value || state.location;
+function render(){
+  const current = data.current_condition[0];
+  const area = data.nearest_area?.[0];
+  const weather = data.weather || [];
+  const place = area?.areaName?.[0]?.value || city;
   const region = area?.region?.[0]?.value || area?.country?.[0]?.value || "";
-  const code = current.weatherCode;
-  const temp = state.unit === "F" ? current.temp_F : current.temp_C;
+  const nowTemp = unit === "F" ? current.temp_F : current.temp_C;
 
-  el.city.textContent = region ? `${city}, ${region}` : city;
-  el.temp.textContent = fmtTemp(temp);
-  el.summary.textContent = `${conditionText(current)}. Humidity ${current.humidity}%, wind ${current.windspeedKmph} km/h, feels like ${fmtTemp(state.unit === "F" ? current.FeelsLikeF : current.FeelsLikeC)}.`;
-  el.mainIcon.src = codeToIcon(code);
-  el.mainIcon.alt = conditionText(current);
+  $("place").textContent = region ? `${place}, ${region}` : place;
+  $("temp").textContent = fmt(nowTemp);
+  $("icon").src = iconFor(current.weatherCode);
+  $("icon").alt = textOf(current);
+  $("desc").textContent = `${textOf(current)}. Feels like ${fmt(unit === "F" ? current.FeelsLikeF : current.FeelsLikeC)}, humidity ${current.humidity}%, wind ${current.windspeedKmph} km/h.`;
+  $("stamp").textContent = `Live wttr.in update: ${new Date().toLocaleTimeString()}`;
 
-  el.unitF.classList.toggle("active", state.unit === "F");
-  el.unitC.classList.toggle("active", state.unit === "C");
-  renderForecast(weather);
-  renderChart(weather[0]?.hourly || []);
-}
+  $("fBtn").classList.toggle("active", unit === "F");
+  $("cBtn").classList.toggle("active", unit === "C");
 
-function renderForecast(weather) {
-  el.forecast.innerHTML = weather.slice(0, 6).map(day => {
-    const high = state.unit === "F" ? day.maxtempF : day.maxtempC;
-    const low = state.unit === "F" ? day.mintempF : day.mintempC;
-    const midday = day.hourly?.[4] || day.hourly?.[0] || {};
-    return `
-      <div class="day">
-        <span>${dayName(day.date)}</span>
-        <img src="${codeToIcon(midday.weatherCode)}" alt="">
-        <span class="hi">${fmtTemp(high)}</span>
-        <span class="lo">${fmtTemp(low)}</span>
-      </div>
-    `;
+  $("days").innerHTML = weather.slice(0,6).map(day => {
+    const mid = day.hourly?.[4] || day.hourly?.[0] || {};
+    const hi = unit === "F" ? day.maxtempF : day.maxtempC;
+    const lo = unit === "F" ? day.mintempF : day.mintempC;
+    return `<div class="day">
+      <span>${dayName(day.date)}</span>
+      <img src="${iconFor(mid.weatherCode)}" alt="">
+      <span class="hi">${fmt(hi)}</span>
+      <span class="lo">${fmt(lo)}</span>
+    </div>`;
   }).join("");
+
+  drawChart(weather[0]?.hourly || []);
 }
 
-function renderChart(hourly) {
-  const points = hourly.slice(0, 8).map((h, i) => ({
+function drawChart(hourly){
+  const points = hourly.slice(0,8).map((h,i) => ({
     x: 38 + i * 86,
-    value: tempValue(h),
-    label: fmtTemp(tempValue(h)),
+    value: tempOf(h),
     time: hourLabel(h.time)
   }));
-  if (!points.length) return;
 
-  const values = points.map(p => p.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = Math.max(1, max - min);
+  const min = Math.min(...points.map(p => p.value));
+  const max = Math.max(...points.map(p => p.value));
+  const range = Math.max(1,max-min);
 
-  points.forEach(p => {
-    p.y = 92 - ((p.value - min) / range) * 54;
-  });
+  points.forEach(p => p.y = 92 - ((p.value-min)/range)*54);
 
-  el.chartLine.setAttribute("d", points.map((p, i) => `${i ? "L" : "M"} ${p.x} ${p.y}`).join(" "));
-  el.chartDots.innerHTML = points.map(p => `<circle class="dot" cx="${p.x}" cy="${p.y}" r="6"></circle>`).join("");
-  el.chartLabels.innerHTML = points.map(p => `
-    <text class="chart-text" x="${p.x}" y="${p.y - 18}">${p.label}</text>
+  $("line").setAttribute("d", points.map((p,i) => `${i ? "L" : "M"} ${p.x} ${p.y}`).join(" "));
+  $("dots").innerHTML = points.map(p => `<circle class="dot" cx="${p.x}" cy="${p.y}" r="6"></circle>`).join("");
+  $("labels").innerHTML = points.map(p => `
+    <text class="chart-temp" x="${p.x}" y="${p.y - 18}">${fmt(p.value)}</text>
     <text class="chart-time" x="${p.x}" y="166">${p.time}</text>
   `).join("");
 }
 
-function hourLabel(raw) {
-  const n = String(raw).padStart(4, "0");
-  const hour = Number(n.slice(0, -2) || "0");
-  if (hour === 0) return "12a";
-  if (hour < 12) return `${hour}a`;
-  if (hour === 12) return "12p";
-  return `${hour - 12}p`;
-}
-
-el.form.addEventListener("submit", event => {
-  event.preventDefault();
-  const next = el.input.value.trim();
-  if (next) fetchWeather(next).catch(showError);
+$("searchForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const next = $("cityInput").value.trim();
+  if(next) loadWeather(next).catch(err => $("desc").textContent = err.message);
 });
 
-el.unitF.addEventListener("click", () => {
-  state.unit = "F";
-  render();
-});
+$("fBtn").onclick = () => { unit = "F"; render(); };
+$("cBtn").onclick = () => { unit = "C"; render(); };
 
-el.unitC.addEventListener("click", () => {
-  state.unit = "C";
-  render();
-});
-
-function showError(error) {
-  document.body.classList.remove("loading");
-  el.city.textContent = "Weather unavailable";
-  el.temp.textContent = "--";
-  el.summary.textContent = `${error.message}. Try another city name.`;
-}
-
-fetchWeather(state.location).catch(showError);
+loadWeather(city).catch(err => $("desc").textContent = err.message);
+setInterval(() => loadWeather(city).catch(() => {}), 5 * 60 * 1000);
