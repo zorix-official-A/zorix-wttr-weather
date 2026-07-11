@@ -14,41 +14,61 @@ let city = "Denver";
 
 const $ = id => document.getElementById(id);
 
+function weatherText(code){
+  const map = {
+    0:"Clear sky",1:"Mainly clear",2:"Partly cloudy",3:"Overcast",
+    45:"Fog",48:"Depositing rime fog",
+    51:"Light drizzle",53:"Moderate drizzle",55:"Dense drizzle",
+    61:"Slight rain",63:"Moderate rain",65:"Heavy rain",
+    71:"Slight snow",73:"Moderate snow",75:"Heavy snow",
+    80:"Rain showers",81:"Rain showers",82:"Violent rain showers",
+    95:"Thunderstorm",96:"Thunderstorm with hail",99:"Thunderstorm with hail"
+  };
+  return map[code] || "Live weather";
+}
+
 function iconFor(code){
-  const n = Number(code);
-  if(n === 113) return icons.sunny;
-  if([116,119].includes(n)) return icons.partly;
-  if(n === 122) return icons.cloudy;
-  if([143,248,260].includes(n)) return icons.fog;
-  if([176,263,266,281,284,293,296,299,302,305,308,311,314,353,356,359].includes(n)) return icons.rain;
-  if([179,182,185,227,230,317,320,323,326,329,332,335,338,350,362,365,368,371,374,377].includes(n)) return icons.snow;
-  if([200,386,389,392,395].includes(n)) return icons.storm;
+  if(code === 0) return icons.sunny;
+  if([1,2].includes(code)) return icons.partly;
+  if(code === 3) return icons.cloudy;
+  if([45,48].includes(code)) return icons.fog;
+  if([51,53,55,61,63,65,80,81,82].includes(code)) return icons.rain;
+  if([71,73,75,77,85,86].includes(code)) return icons.snow;
+  if([95,96,99].includes(code)) return icons.storm;
   return icons.partly;
 }
 
-function textOf(x){
-  return x?.weatherDesc?.[0]?.value || "Live weather";
+function cToF(c){
+  return c * 9 / 5 + 32;
 }
 
-function tempOf(x){
-  return Number(unit === "F" ? x.tempF || x.avgtempF || x.maxtempF : x.tempC || x.avgtempC || x.maxtempC);
+function temp(v){
+  return unit === "F" ? cToF(v) : v;
 }
 
-function fmt(x){
-  return `${Math.round(Number(x))}°`;
+function fmt(v){
+  return `${Math.round(Number(v))}°`;
 }
 
 function dayName(date){
   return new Intl.DateTimeFormat("en",{weekday:"short"}).format(new Date(date+"T12:00:00"));
 }
 
-function hourLabel(raw){
-  const s = String(raw).padStart(4,"0");
-  const h = Number(s.slice(0,-2) || "0");
+function hourLabel(iso){
+  const h = new Date(iso).getHours();
   if(h === 0) return "12a";
   if(h < 12) return `${h}a`;
   if(h === 12) return "12p";
   return `${h - 12}p`;
+}
+
+async function geocode(name){
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=1&language=en&format=json`;
+  const res = await fetch(url, { cache:"no-store" });
+  if(!res.ok) throw new Error("Geocoding failed");
+  const json = await res.json();
+  if(!json.results || !json.results.length) throw new Error("City not found");
+  return json.results[0];
 }
 
 async function loadWeather(nextCity){
@@ -56,92 +76,87 @@ async function loadWeather(nextCity){
   card.classList.add("loading");
   city = nextCity;
 
-  const wttrUrl = `https://wttr.in/${encodeURIComponent(city)}?format=j1&_=${Date.now()}`;
-  const v2Url = `https://v2.wttr.in/${encodeURIComponent(city)}?format=j1&_=${Date.now()}`;
+  try{
+    const place = await geocode(city);
 
-  const paths = [
-    wttrUrl,
-    v2Url,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(wttrUrl)}`,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(v2Url)}`
-  ];
+    const url =
+      `https://api.open-meteo.com/v1/forecast` +
+      `?latitude=${place.latitude}` +
+      `&longitude=${place.longitude}` +
+      `&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m` +
+      `&hourly=temperature_2m,weather_code` +
+      `&daily=weather_code,temperature_2m_max,temperature_2m_min` +
+      `&forecast_days=7` +
+      `&timezone=auto`;
 
-  try {
-    let lastError = null;
+    const res = await fetch(url, { cache:"no-store" });
+    if(!res.ok) throw new Error("Weather API failed");
 
-    for (const url of paths) {
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 9000);
+    data = {
+      place,
+      weather: await res.json()
+    };
 
-        const res = await fetch(url, {
-          cache: "no-store",
-          signal: controller.signal
-        });
-
-        clearTimeout(timer);
-
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        data = await res.json();
-        render();
-        return;
-      } catch (err) {
-        lastError = err;
-      }
-    }
-
-    throw lastError || new Error("wttr.in failed");
+    render();
   } finally {
     card.classList.remove("loading");
   }
 }
 
 function render(){
-  const current = data.current_condition[0];
-  const area = data.nearest_area?.[0];
-  const weather = data.weather || [];
-  const place = area?.areaName?.[0]?.value || city;
-  const region = area?.region?.[0]?.value || area?.country?.[0]?.value || "";
-  const nowTemp = unit === "F" ? current.temp_F : current.temp_C;
+  const place = data.place;
+  const w = data.weather;
+  const current = w.current;
 
-  $("place").textContent = region ? `${place}, ${region}` : place;
-  $("temp").textContent = fmt(nowTemp);
-  $("icon").src = iconFor(current.weatherCode);
-  $("icon").alt = textOf(current);
-  $("desc").textContent = `${textOf(current)}. Feels like ${fmt(unit === "F" ? current.FeelsLikeF : current.FeelsLikeC)}, humidity ${current.humidity}%, wind ${current.windspeedKmph} km/h.`;
-  $("stamp").textContent = `Live wttr.in update: ${new Date().toLocaleTimeString()}`;
+  $("place").textContent = `${place.name}${place.admin1 ? ", " + place.admin1 : ""}`;
+  $("temp").textContent = fmt(temp(current.temperature_2m));
+  $("icon").src = iconFor(current.weather_code);
+  $("icon").alt = weatherText(current.weather_code);
+
+  $("desc").textContent =
+    `${weatherText(current.weather_code)}. Feels like ${fmt(temp(current.apparent_temperature))}, humidity ${current.relative_humidity_2m}%, wind ${Math.round(current.wind_speed_10m)} km/h.`;
+
+  $("stamp").textContent = `Live Open-Meteo update: ${new Date().toLocaleTimeString()}`;
 
   $("fBtn").classList.toggle("active", unit === "F");
   $("cBtn").classList.toggle("active", unit === "C");
 
-  $("days").innerHTML = weather.slice(0,6).map(day => {
-    const mid = day.hourly?.[4] || day.hourly?.[0] || {};
-    const hi = unit === "F" ? day.maxtempF : day.maxtempC;
-    const lo = unit === "F" ? day.mintempF : day.mintempC;
-    return `<div class="day">
-      <span>${dayName(day.date)}</span>
-      <img src="${iconFor(mid.weatherCode)}" alt="">
-      <span class="hi">${fmt(hi)}</span>
-      <span class="lo">${fmt(lo)}</span>
-    </div>`;
-  }).join("");
+  $("days").innerHTML = w.daily.time.slice(0,6).map((date,i) => `
+    <div class="day">
+      <span>${dayName(date)}</span>
+      <img src="${iconFor(w.daily.weather_code[i])}" alt="">
+      <span class="hi">${fmt(temp(w.daily.temperature_2m_max[i]))}</span>
+      <span class="lo">${fmt(temp(w.daily.temperature_2m_min[i]))}</span>
+    </div>
+  `).join("");
 
-  drawChart(weather[0]?.hourly || []);
+  drawChart();
 }
 
-function drawChart(hourly){
-  const points = hourly.slice(0,8).map((h,i) => ({
+function drawChart(){
+  const w = data.weather;
+  const now = new Date(w.current.time).getTime();
+
+  const rows = w.hourly.time
+    .map((time,i) => ({
+      time,
+      value: temp(w.hourly.temperature_2m[i]),
+      ms: new Date(time).getTime()
+    }))
+    .filter(x => x.ms >= now)
+    .slice(0,8);
+
+  const points = rows.map((h,i) => ({
     x: 38 + i * 86,
-    value: tempOf(h),
+    value: h.value,
     time: hourLabel(h.time)
   }));
 
   const min = Math.min(...points.map(p => p.value));
   const max = Math.max(...points.map(p => p.value));
-  const range = Math.max(1,max-min);
+  const range = Math.max(1, max - min);
 
-  points.forEach(p => p.y = 92 - ((p.value-min)/range)*54);
+  points.forEach(p => p.y = 92 - ((p.value - min) / range) * 54);
 
   $("line").setAttribute("d", points.map((p,i) => `${i ? "L" : "M"} ${p.x} ${p.y}`).join(" "));
   $("dots").innerHTML = points.map(p => `<circle class="dot" cx="${p.x}" cy="${p.y}" r="6"></circle>`).join("");
@@ -154,17 +169,18 @@ function drawChart(hourly){
 $("searchForm").addEventListener("submit", e => {
   e.preventDefault();
   const next = $("cityInput").value.trim();
-  if(next) loadWeather(next).catch(err => $("desc").textContent = err.message);
+  if(next) loadWeather(next).catch(showError);
 });
 
-$("fBtn").onclick = () => { unit = "F"; render(); };
-$("cBtn").onclick = () => { unit = "C"; render(); };
+$("fBtn").onclick = () => { unit = "F"; if(data) render(); };
+$("cBtn").onclick = () => { unit = "C"; if(data) render(); };
 
-loadWeather(city).catch(err => {
+function showError(err){
   $("place").textContent = "Weather unavailable";
   $("temp").textContent = "--";
-  $("desc").textContent = "Live weather failed to load. wttr.in may be blocked by browser/CORS/network. Try another city or refresh.";
+  $("desc").textContent = err.message || "Live weather failed to load.";
   console.error(err);
-});
+}
 
-setInterval(() => loadWeather(city).catch(err => console.error(err)), 5 * 60 * 1000);
+loadWeather(city).catch(showError);
+setInterval(() => loadWeather(city).catch(console.error), 5 * 60 * 1000);
