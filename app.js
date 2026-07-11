@@ -8,7 +8,7 @@ const icons = {
   fog: "./assets/icons/fog.svg"
 };
 
-let unit = "F";
+let unit = "C";
 let data = null;
 let city = "Denver";
 
@@ -116,7 +116,7 @@ function render(){
   $("desc").textContent =
     `${weatherText(current.weather_code)}. Feels like ${fmt(temp(current.apparent_temperature))}, humidity ${current.relative_humidity_2m}%, wind ${Math.round(current.wind_speed_10m)} km/h.`;
 
-  $("stamp").textContent = `Live Open-Meteo update: ${new Date().toLocaleTimeString()}`;
+  $("stamp").textContent = `Live update: ${new Date().toLocaleTimeString()}`;
 
   $("fBtn").classList.toggle("active", unit === "F");
   $("cBtn").classList.toggle("active", unit === "C");
