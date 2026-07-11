@@ -52,14 +52,45 @@ function hourLabel(raw){
 }
 
 async function loadWeather(nextCity){
-  document.querySelector(".weather-card").classList.add("loading");
+  const card = document.querySelector(".weather-card");
+  card.classList.add("loading");
   city = nextCity;
-  const url = `https://wttr.in/${encodeURIComponent(city)}?format=j1&_=${Date.now()}`;
-  const res = await fetch(url,{cache:"no-store"});
-  if(!res.ok) throw new Error("wttr.in failed");
-  data = await res.json();
-  render();
-  document.querySelector(".weather-card").classList.remove("loading");
+
+  const paths = [
+    `https://wttr.in/${encodeURIComponent(city)}?format=j1&_=${Date.now()}`,
+    `https://v2.wttr.in/${encodeURIComponent(city)}?format=j1&_=${Date.now()}`
+  ];
+
+  try {
+    let lastError = null;
+
+    for (const url of paths) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 9000);
+
+        const res = await fetch(url, {
+          cache: "no-store",
+          mode: "cors",
+          signal: controller.signal
+        });
+
+        clearTimeout(timer);
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        data = await res.json();
+        render();
+        return;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error("wttr.in failed");
+  } finally {
+    card.classList.remove("loading");
+  }
 }
 
 function render(){
@@ -125,5 +156,11 @@ $("searchForm").addEventListener("submit", e => {
 $("fBtn").onclick = () => { unit = "F"; render(); };
 $("cBtn").onclick = () => { unit = "C"; render(); };
 
-loadWeather(city).catch(err => $("desc").textContent = err.message);
-setInterval(() => loadWeather(city).catch(() => {}), 5 * 60 * 1000);
+loadWeather(city).catch(err => {
+  $("place").textContent = "Weather unavailable";
+  $("temp").textContent = "--";
+  $("desc").textContent = "Live weather failed to load. Try another city or refresh.";
+  console.error(err);
+});
+
+setInterval(() => loadWeather(city).catch(err => console.error(err)), 5 * 60 * 1000);
